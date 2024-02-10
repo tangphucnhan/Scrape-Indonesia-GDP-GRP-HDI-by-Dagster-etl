@@ -1,0 +1,8 @@
+GDP_URL = "https://en.wikipedia.org/wiki/List_of_Indonesian_provinces_by_GDP"
+GRP_URL = "https://en.wikipedia.org/wiki/List_of_Indonesian_provinces_by_GRP_per_capita"
+HDI_URL = "https://en.wikipedia.org/wiki/List_of_Indonesian_provinces_by_Human_Development_Index"
+DB_USER = "postgres"
+DB_PWD = "pass"
+DB_HOST = "localhost"
+DB_PORT = "5432"
+DB_NAME = "wiki"

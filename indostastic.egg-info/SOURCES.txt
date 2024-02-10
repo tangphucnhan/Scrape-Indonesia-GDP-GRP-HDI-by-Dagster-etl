@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+setup.cfg
+setup.py
+indostastic/__init__.py
+indostastic/assets.py
+indostastic.egg-info/PKG-INFO
+indostastic.egg-info/SOURCES.txt
+indostastic.egg-info/dependency_links.txt
+indostastic.egg-info/requires.txt
+indostastic.egg-info/top_level.txt
