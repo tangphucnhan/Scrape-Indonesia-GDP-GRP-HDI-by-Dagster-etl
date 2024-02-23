@@ -71,7 +71,7 @@ def load_gdp_data(context: AssetExecutionContext) -> None:
         cur_time, year = info['cur_time'], info['year']
         f.close()
     df = pd.read_csv(f"data/{cur_time}/gdp_transform_{year}.csv", )
-    engine = create_engine("postgresql://postgres:123456@localhost:5432/indo_stastic")
+    engine = create_engine(f"postgresql://{DB_USER}:{DB_PWD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
     count = df.to_sql(name='indo_gdp', con=engine, index=False, if_exists='replace')
     context.log.info(f"!!!!!!!!!!!!!! Inserted {count} GDP rows")
 
@@ -131,7 +131,7 @@ def load_grp_data(context: AssetExecutionContext) -> None:
         cur_time, year = info['cur_time'], info['year']
         f.close()
     df = pd.read_csv(f"data/{cur_time}/grp_transform_{year}.csv", )
-    engine = create_engine("postgresql://postgres:123456@localhost:5432/indo_stastic")
+    engine = create_engine(f"postgresql://{DB_USER}:{DB_PWD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
     count = df.to_sql(name='indo_grp', con=engine, index=False, if_exists='replace')
     context.log.info(f"!!!!!!!!!!!!!! Inserted {count} GRP rows")
 
