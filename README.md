@@ -1,5 +1,7 @@
-# indostatistic
+# indostatistic (Indonesia GDP, GRP & HDI)
 
-This is a Dagster project scaffolded with `dagster project scaffold`.
+This is a Dagster project that use assets to scrape Indonesia statistic information from wiki page.
 
-It uses assets to fetch data from web and load to postgresql.
+Beautiful Soup is used to extract html from raw response.
+
+Data then is loaded to postgresql and flushed to csv files for PowerBI reports.
