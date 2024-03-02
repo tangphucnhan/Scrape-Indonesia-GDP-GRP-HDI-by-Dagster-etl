@@ -15,14 +15,15 @@ from constants import *
 @asset
 def init():
     cur_time = datetime.datetime.today().strftime('%Y%m%d_%H%M%S')
-    os.makedirs(f"data/{cur_time}", exist_ok=True)
+    os.makedirs(f"data/{cur_time}/csv_tables", exist_ok=True)
     with open("data/info.txt", "w") as f:
         f.write(str({"cur_time": cur_time}))
         f.close()
 
 
 @asset(deps=[init])
-def extract_table_gdp(context: AssetExecutionContext) -> None:
+def extract_gdp_html(context: AssetExecutionContext) -> None:
+    info = {}
     with open("data/info.txt", "r") as f:
         info = json.JSONDecoder().decode(f.read().replace("'", "\""))
         cur_time = info['cur_time']
@@ -31,16 +32,27 @@ def extract_table_gdp(context: AssetExecutionContext) -> None:
     html = requests.get(GDP_URL, headers=headers).text
     year = re.findall(r'id="([0-9]{4})_data"', html, re.IGNORECASE)[0]
     soup = BeautifulSoup(html, "html.parser")
-    table_gdp = soup.find_all('table', {'class': 'wikitable'})[0]
+    html_table = soup.find_all('table', {'class': 'wikitable'})[0]
+    dirty = html_table.find_all_next("caption", limit=1)
+    if dirty:
+        dirty[0].extract(_self_index=dirty[0].parent.index(dirty[0]))
+    dirty = html_table.find_all_next("tr", limit=1)
+    if dirty and dirty[0].text.index("exchange"):
+        dirty[0].extract(_self_index=dirty[0].parent.index(dirty[0]))
+    dirty = html_table.find_all_next("sup")
+    if dirty:
+        for a_dirty in dirty:
+            a_dirty.extract(_self_index=a_dirty.parent.index(a_dirty))
     with open(f"data/{cur_time}/gdp_extract_{year}.htm", "w") as f:
-        f.write(str(table_gdp))
+        f.write(str(html_table))
         f.close()
     with open("data/info.txt", "w") as f:
-        f.write(str({"cur_time": cur_time, "year": year}))
+        info["year"] = year
+        f.write(str(info))
         f.close()
 
 
-@asset(deps=[extract_table_gdp])
+@asset(deps=[extract_gdp_html])
 def transform_gdp_data(context: AssetExecutionContext) -> None:
     with open("data/info.txt", "r") as f:
         info = json.JSONDecoder().decode(f.read().replace("'", "\""))
@@ -53,7 +65,7 @@ def transform_gdp_data(context: AssetExecutionContext) -> None:
         df = df[df['Rank'].str.isdigit()]
         df.drop(inplace=True, columns=['Rank', 'GDP PPP'])
         df.rename(inplace=True, columns={
-            'GDP[8] (in billion Rp)': 'GDP Nominal (billion RP)',
+            'GDP (in billion Rp)': 'GDP Nominal (billion RP)',
             'GDP Nominal': 'GDP Nominal (billion USD)',
         })
         ids = range(1, len(df['Province']) + 1)
@@ -72,36 +84,54 @@ def load_gdp_data(context: AssetExecutionContext) -> None:
         f.close()
     df = pd.read_csv(f"data/{cur_time}/gdp_transform_{year}.csv", )
     engine = create_engine(f"postgresql://{DB_USER}:{DB_PWD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
-    count = df.to_sql(name='indo_gdp', con=engine, index=False, if_exists='replace')
+    count = df.to_sql(name='gdp', con=engine, index=False, if_exists='replace')
     context.log.info(f"!!!!!!!!!!!!!! Inserted {count} GDP rows")
+    df.to_csv(f"data/{cur_time}/csv_tables/gdp.csv", index=False)
 
     df.drop(columns=["GDP Nominal (billion RP)", "GDP Nominal (billion USD)"], inplace=True)
-    df.to_sql(name='indo_provinces', con=engine, index=False, if_exists='replace')
-    df = pd.DataFrame({"Region": sorted(pd.unique(df['Region']))})
-    df.to_sql(name='indo_regions', con=engine, index=False, if_exists='replace')
+    df.to_sql(name='provinces', con=engine, index=False, if_exists='replace')
+    df.to_csv(f"data/{cur_time}/csv_tables/provinces.csv", index=False)
+
+    regions = df["Region"].unique().tolist()
+    reg_ids = range(1, len(regions) + 1)
+    df = pd.DataFrame(zip(reg_ids, regions), index=None, columns=["Region Id", "Region"])
+    df.to_sql(name='regions', con=engine, index=False, if_exists='replace')
+    df.to_csv(f"data/{cur_time}/csv_tables/regions.csv", index=False)
 
 
 @asset(deps=[init])
-def extract_table_grp() -> None:
+def extract_grp_html() -> None:
     headers = {'Accept-Encoding': 'utf8'}
     html = requests.get(GRP_URL, headers=headers).text
+    info = {}
     with open("data/info.txt", "r") as f:
         info = json.JSONDecoder().decode(f.read().replace("'", "\""))
         cur_time = info['cur_time']
         f.close()
-    year = re.findall(r'id="([0-9]{4})_Per_Capita"', html, re.IGNORECASE)[0]
+    year = re.findall(r'id="([0-9]{4})_Data"', html, re.IGNORECASE)[0]
     soup = BeautifulSoup(html, "html.parser")
-    table_grp = soup.find_all('table', {'class': 'wikitable'})[0]
+    html_table = soup.find_all('table', {'class': 'wikitable'})[0]
+    dirty = html_table.find_all_next("caption", limit=1)
+    if dirty:
+        dirty[0].extract(_self_index=dirty[0].parent.index(dirty[0]))
+    dirty = html_table.find_all_next("tr", limit=1)
+    if dirty and dirty[0].text.index("exchange"):
+        dirty[0].extract(_self_index=dirty[0].parent.index(dirty[0]))
+    dirty = html_table.find_all_next("sup")
+    if dirty:
+        for a_dirty in dirty:
+            a_dirty.extract(_self_index=a_dirty.parent.index(a_dirty))
     with open(f"data/{cur_time}/grp_extract_{year}.htm", "w") as f:
-        f.write(str(table_grp))
+        f.write(str(html_table))
         f.close()
     with open("data/info.txt", "w") as f:
-        f.write(str({"cur_time": cur_time, "year": year}))
+        info["year"] = year
+        f.write(str(info))
         f.close()
 
 
-@asset(deps=[extract_table_grp])
-def transform_grp_data() -> None:
+@asset(deps=[extract_grp_html])
+def transform_grp_data(context: AssetExecutionContext) -> None:
     with open("data/info.txt", "r") as f:
         info = json.JSONDecoder().decode(f.read().replace("'", "\""))
         cur_time, year = info['cur_time'], info['year']
@@ -111,10 +141,10 @@ def transform_grp_data() -> None:
         f.close()
         df = pd.read_html(io.StringIO(html_grp), index_col=None, header=0)[0]
         df = df[df['Rank'].str.isdigit()]
-        df.drop(inplace=True, columns=['Rank', 'Per capita PPP'])
+        df.drop(inplace=True, columns=['Rank', 'Per capita.1'])
         df.rename(inplace=True, columns={
-            'Per capita[9] (in thousand Rp)': 'Per capita (thousand RP)',
-            'Per capita Nominal': 'Per capita Nominal (USD)',
+            'Per capita (in thousand Rp)': 'Per capita (thousand RP)',
+            'Per capita': 'Per capita Nominal (USD)',
         })
         ids = range(1, len(df['Province']) + 1)
         df.set_index('Province', drop=False, inplace=True)
@@ -132,12 +162,13 @@ def load_grp_data(context: AssetExecutionContext) -> None:
         f.close()
     df = pd.read_csv(f"data/{cur_time}/grp_transform_{year}.csv", )
     engine = create_engine(f"postgresql://{DB_USER}:{DB_PWD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
-    count = df.to_sql(name='indo_grp', con=engine, index=False, if_exists='replace')
+    count = df.to_sql(name='grp', con=engine, index=False, if_exists='replace')
     context.log.info(f"!!!!!!!!!!!!!! Inserted {count} GRP rows")
+    df.to_csv(f"data/{cur_time}/csv_tables/grp.csv", index=False)
 
 
 @asset(deps=[init])
-def extract_table_hdi(context: AssetExecutionContext) -> None:
+def extract_hdi_html(context: AssetExecutionContext) -> None:
     headers = {'Accept-Encoding': 'utf8'}
     html = requests.get(HDI_URL, headers=headers).text
     with open("data/info.txt", "r") as f:
@@ -155,7 +186,7 @@ def extract_table_hdi(context: AssetExecutionContext) -> None:
         f.close()
 
 
-@asset(deps=[extract_table_hdi])
+@asset(deps=[extract_hdi_html])
 def transform_hdi_data(context: AssetExecutionContext) -> None:
     with open("data/info.txt", "r") as f:
         info = json.JSONDecoder().decode(f.read().replace("'", "\""))
@@ -185,20 +216,27 @@ def transform_hdi_data(context: AssetExecutionContext) -> None:
         full_df['2022'] = 0.0
         full_df['2023'] = 0.0
         df.set_index('Province', inplace=True)
-        ids = range(1, len(full_df['Province']) + 1)
         full_df.set_index('Province', drop=False, inplace=True)
         for prv in full_df.index:
             full_df.loc[prv, '2022'] = str.ljust(str(df.loc[prv, '2023'].astype(float) - df.loc[prv, '2022'].astype(float)), 6, '0')[:6]
             full_df.loc[prv, '2023'] = str.ljust(str(df.loc[prv, '2023']), 6, '0')[:6]
+
+        full_df.loc["Southwest Papua"] = [full_df.loc["West Papua", col] for col in full_df.columns]
+        full_df.loc["Southwest Papua", "Province"] = "Southwest Papua"
+        for other_papua in ["South Papua", "Central Papua", "Highland Papua"]:
+            full_df.loc[other_papua] = [full_df.loc["Papua", col] for col in full_df.columns]
+            full_df.loc[other_papua, "Province"] = other_papua
+
         full_df.sort_index(inplace=True)
+        ids = range(1, full_df.count()["Province"] + 1)
         full_df.insert(loc=0, column="Id", value=ids)
         full_df.set_index("Id", drop=False, inplace=True)
         full_df.to_csv(f"data/{cur_time}/hdi_transform_2010_2023.csv", index=False)
 
         summary_years = [year for year in full_df.columns if year not in ["Id", "Province"]]
-        summary_means = [full_df[year].astype(float).mean().round(4) for year in summary_years]
-        full_df = pd.DataFrame(data=[summary_years, summary_means], index=None, columns=None)
-        full_df.T.to_csv(f"data/{cur_time}/hdi_transform_2010_2023_summary.csv", header=["Year", "Mean"], index=False)
+        summary_averages = [full_df[year].astype(float).mean().round(4) for year in summary_years]
+        full_df = pd.DataFrame(data=[summary_years, summary_averages], index=None, columns=None)
+        full_df.T.to_csv(f"data/{cur_time}/hdi_transform_2010_2023_summary.csv", header=["Year", "Average"], index=False)
 
 
 @asset(deps=[transform_hdi_data])
@@ -209,14 +247,16 @@ def load_hdi_data(context: AssetExecutionContext) -> None:
         f.close()
     engine = create_engine(f"postgresql://{DB_USER}:{DB_PWD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
     df = pd.read_csv(f"data/{cur_time}/hdi_transform_2010_2023.csv", )
-    count = df.to_sql(name='indo_hdi', con=engine, index=False, if_exists='replace')
+    count = df.to_sql(name='hdi', con=engine, index=False, if_exists='replace')
     context.log.info(f"!!!!!!!!!!!!!! Inserted {count} HDI rows")
+    df.to_csv(f"data/{cur_time}/csv_tables/hdi.csv", index=False)
 
     df = pd.read_csv(f"data/{cur_time}/hdi_transform_2010_2023_summary.csv", )
-    df.to_sql(name='indo_hdi_summary', con=engine, index=False, if_exists='replace')
+    df.to_sql(name='hdi_year_summary', con=engine, index=False, if_exists='replace')
+    df.to_csv(f"data/{cur_time}/csv_tables/hdi_year_summary.csv", index=False)
 
 
-# @asset(deps=[extract_table_hdi])
+# @asset(deps=[extract_hdi_html])
 def transform_hdi_data_transpose(context: AssetExecutionContext) -> None:
     with open("data/info.txt", "r") as f:
         info = json.JSONDecoder().decode(f.read().replace("'", "\""))
